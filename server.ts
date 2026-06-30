@@ -54,10 +54,26 @@ async function startServer() {
       }
     } catch (err: any) {
       console.error("API Key Test Failure:", err);
+      const errMsg = err?.message || String(err);
+      
+      const isQuotaExceeded = errMsg.includes("RESOURCE_EXHAUSTED") || 
+                              errMsg.includes("429") || 
+                              errMsg.includes("Quota exceeded") ||
+                              err?.status === "RESOURCE_EXHAUSTED" || 
+                              err?.code === 429;
+                              
+      if (isQuotaExceeded) {
+        return res.json({
+          success: true,
+          isQuotaExceeded: true,
+          message: "API Key 인증 자체는 성공했으나, 현재 사용 중인 API Key의 무료 호출 한도(Quota)가 초과되었습니다. API Key 자체는 올바르게 설정되었으므로 안심하고 저장하셔도 좋습니다. (약 1분 뒤에 사용량이 초기화됩니다.)"
+        });
+      }
+
       return res.status(200).json({
         success: false,
         error: "API Key 인증 실패 또는 호출 오류",
-        details: err?.message || String(err),
+        details: errMsg,
       });
     }
   });
@@ -232,10 +248,23 @@ ${sampledAnswers.map((ans, idx) => `${idx + 1}. ${ans}`).join("\n")}
       res.json(result);
     } catch (err: any) {
       console.error("AI Analysis Error:", err);
+      const errMsg = err?.message || String(err);
+      
+      const isQuotaExceeded = errMsg.includes("RESOURCE_EXHAUSTED") || 
+                              errMsg.includes("429") || 
+                              errMsg.includes("Quota exceeded") ||
+                              err?.status === "RESOURCE_EXHAUSTED" || 
+                              err?.code === 429;
+                              
+      let errorResponseMsg = "AI가 주관식 답변을 분석하는 도중 오류가 발생했습니다.";
+      if (isQuotaExceeded) {
+        errorResponseMsg = "입력하신 무료 API Key의 호출 한도(Quota)가 초과되었습니다. 무료 티어의 분당 요청/토큰 제한 또는 일일 사용량 한도에 도달한 상태입니다. 약 1분 정도 후에 다시 요청하시면 정상 분석이 가능합니다.";
+      }
+      
       res.status(200).json({
         success: false,
-        error: "AI가 주관식 답변을 분석하는 도중 오류가 발생했습니다.",
-        details: err?.message || String(err),
+        error: errorResponseMsg,
+        details: errMsg,
       });
     }
   });

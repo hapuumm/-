@@ -39,7 +39,7 @@ export const decryptKey = (encKey: string): string => {
 export default function ApiKeyModal({ isOpen, onClose, onKeySaved }: ApiKeyModalProps) {
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
-  const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'failed'>('idle');
+  const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'warning' | 'failed'>('idle');
   const [testMessage, setTestMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -101,8 +101,13 @@ export default function ApiKeyModal({ isOpen, onClose, onKeySaved }: ApiKeyModal
       }
 
       if (response.ok && data.success) {
-        setTestStatus('success');
-        setTestMessage("연결에 성공했습니다! 입력한 API Key가 정상 작동합니다. 🎉");
+        if (data.isQuotaExceeded) {
+          setTestStatus('warning');
+          setTestMessage(data.message || "API Key가 유효한 것으로 확인되었습니다! 다만, 현재 해당 API Key의 사용량 한도(Quota)가 초과되었습니다. 키는 로컬 브라우저에 정상 등록되었습니다. ⏳");
+        } else {
+          setTestStatus('success');
+          setTestMessage("연결에 성공했습니다! 입력한 API Key가 정상 작동합니다. 🎉");
+        }
         // Auto save on successful test
         handleSaveToLocalStorage(apiKey);
       } else {
@@ -275,10 +280,13 @@ export default function ApiKeyModal({ isOpen, onClose, onKeySaved }: ApiKeyModal
               <div className={`p-3 rounded-xl border text-xs font-semibold flex items-start gap-2.5 ${
                 testStatus === 'testing' ? 'bg-blue-50/60 border-blue-100 text-blue-700' :
                 testStatus === 'success' ? 'bg-emerald-50 border-emerald-100 text-emerald-700' :
+                testStatus === 'warning' ? 'bg-amber-50 border-amber-100 text-amber-750' :
                 'bg-rose-50 border-rose-100 text-rose-700'
               }`}>
                 {testStatus === 'success' ? (
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                ) : testStatus === 'warning' ? (
+                  <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                 ) : testStatus === 'failed' ? (
                   <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
                 ) : (
