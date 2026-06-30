@@ -46,16 +46,30 @@ async function startServer() {
         return res.status(400).json({ error: "API Key가 제공되지 않았습니다." });
       }
 
-      // Try a lightweight request to test the key
-      const response = await client.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: "Hello. Respond with one word: 'OK'",
-      });
+      // Try multiple models in case one is overloaded
+      const modelsToTry = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-3.5-flash"];
+      let response: any = null;
+      let lastError: any = null;
+
+      for (const model of modelsToTry) {
+        try {
+          response = await client.models.generateContent({
+            model: model,
+            contents: "Hello. Respond with one word: 'OK'",
+          });
+          if (response && response.text) {
+            break; // Success!
+          }
+        } catch (err: any) {
+          lastError = err;
+          console.warn(`[AI Key Test] Failed with ${model}:`, err?.message || err);
+        }
+      }
 
       if (response && response.text) {
         return res.json({ success: true, message: "API Key 연결 테스트 성공!" });
       } else {
-        throw new Error("응답이 올바르지 않습니다.");
+        throw lastError || new Error("응답이 올바르지 않습니다.");
       }
     } catch (err: any) {
       console.error("API Key Test Failure:", err);
@@ -173,8 +187,14 @@ ${sampledAnswers.map((ans, idx) => `${idx + 1}. ${ans}`).join("\n")}
         required: ["overallSummary", "mainKeywords", "reportInsights", "categories"],
       };
 
-      // Robust retry with model fallback
-      const modelsToTry = ["gemini-3.5-flash", "gemini-3.1-pro-preview"];
+      // Robust retry with model fallback (tries modern production models first to bypass transient quota/overload issues)
+      const modelsToTry = [
+        "gemini-2.5-flash", 
+        "gemini-2.0-flash", 
+        "gemini-1.5-flash", 
+        "gemini-3.5-flash", 
+        "gemini-3.1-pro-preview"
+      ];
       const maxRetriesPerModel = 2;
       let response: any = null;
       let lastError: any = null;
