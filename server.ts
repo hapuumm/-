@@ -18,25 +18,57 @@ async function startServer() {
   app.use(express.json({ limit: "15mb" }));
   app.use(express.urlencoded({ extended: true, limit: "15mb" }));
 
-  // Initialize Gemini client on server-side
-  const apiKey = process.env.GEMINI_API_KEY;
-  const ai = apiKey
-    ? new GoogleGenAI({
-        apiKey: apiKey,
-        httpOptions: {
-          headers: {
-            "User-Agent": "aistudio-build",
-          },
+  // Helper to dynamically get Gemini client
+  const getAiClient = (req: express.Request) => {
+    const headerKey = req.headers["x-api-key"] || req.headers["authorization"]?.toString().replace("Bearer ", "");
+    const key = headerKey || process.env.GEMINI_API_KEY;
+    if (!key) return null;
+    return new GoogleGenAI({
+      apiKey: key as string,
+      httpOptions: {
+        headers: {
+          "User-Agent": "aistudio-build",
         },
-      })
-    : null;
+      },
+    });
+  };
+
+  // API Key Connection Test Endpoint
+  app.post("/api/ai/test-key", async (req, res) => {
+    try {
+      const client = getAiClient(req);
+      if (!client) {
+        return res.status(400).json({ error: "API Key가 제공되지 않았습니다." });
+      }
+
+      // Try a lightweight request to test the key
+      const response = await client.models.generateContent({
+        model: "gemini-2.0-flash",
+        contents: "Hello. Respond with one word: 'OK'",
+      });
+
+      if (response && response.text) {
+        return res.json({ success: true, message: "API Key 연결 테스트 성공!" });
+      } else {
+        throw new Error("응답이 올바르지 않습니다.");
+      }
+    } catch (err: any) {
+      console.error("API Key Test Failure:", err);
+      return res.status(400).json({
+        success: false,
+        error: "API Key 인증 실패 또는 호출 오류",
+        details: err?.message || String(err),
+      });
+    }
+  });
 
   // AI Subjective Text Categorization Endpoint
   app.post("/api/ai/analyze-text", async (req, res) => {
     try {
-      if (!ai) {
-        return res.status(500).json({
-          error: "Gemini API Key가 설정되지 않았습니다. Settings > Secrets에서 GEMINI_API_KEY를 입력해 주세요.",
+      const client = getAiClient(req);
+      if (!client) {
+        return res.status(401).json({
+          error: "API Key가 설정되지 않았습니다. 우측 상단의 'API 설정' 버튼을 눌러 개인 API Key를 입력해 주세요.",
         });
       }
 
@@ -146,7 +178,7 @@ ${sampledAnswers.map((ans, idx) => `${idx + 1}. ${ans}`).join("\n")}
         for (let attempt = 1; attempt <= maxRetriesPerModel; attempt++) {
           try {
             console.log(`[AI Analysis] Attempting model: ${model}, attempt ${attempt}/${maxRetriesPerModel}`);
-            response = await ai.models.generateContent({
+            response = await client.models.generateContent({
               model: model,
               contents: prompt,
               config: {

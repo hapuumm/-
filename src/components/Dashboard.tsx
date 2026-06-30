@@ -23,6 +23,7 @@ import {
 import { generateDemoDataset } from '../utils/demoData';
 import QuestionList from './QuestionList';
 import TableViewer from './TableViewer';
+import ApiKeyModal from './ApiKeyModal';
 import {
   Upload,
   FileSpreadsheet,
@@ -36,12 +37,19 @@ import {
   ArrowRight,
   Database,
   Trash2,
-  PieChart
+  PieChart,
+  Key
 } from 'lucide-react';
 
 export default function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isApiModalOpen, setIsApiModalOpen] = useState(false);
+  
+  const handleKeySaved = () => {
+    // Clear session storage cache to force re-analysis with new key
+    sessionStorage.clear();
+  };
   
   // Data States
   const [filename, setFilename] = useState<string | null>(null);
@@ -317,6 +325,14 @@ export default function Dashboard() {
           </div>
 
           <div className="flex items-center gap-3">
+            <button
+              id="api-settings-btn"
+              onClick={() => setIsApiModalOpen(true)}
+              className="flex items-center gap-1.5 text-xs font-semibold bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 px-3 py-2 rounded-xl transition-all shadow-xs cursor-pointer"
+            >
+              <Key className="w-3.5 h-3.5 text-purple-500" />
+              API Key 설정 ✨
+            </button>
             {filename && (
               <button
                 id="reset-state-btn"
@@ -601,6 +617,12 @@ export default function Dashboard() {
           </div>
         </div>
       </footer>
+
+      <ApiKeyModal 
+        isOpen={isApiModalOpen} 
+        onClose={() => setIsApiModalOpen(false)} 
+        onKeySaved={handleKeySaved} 
+      />
     </div>
   );
 }

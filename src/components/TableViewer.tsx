@@ -7,6 +7,7 @@ import React, { useState, useRef } from 'react';
 import { TabulationTable, QuestionGroup, DemographicKey, QuestionType, Respondent } from '../types';
 import { tableToCSV } from '../utils/parser';
 import { Copy, Download, Check, RefreshCw, BarChart2, ListFilter } from 'lucide-react';
+import { decryptKey } from './ApiKeyModal';
 
 interface TableViewerProps {
   table: TabulationTable;
@@ -87,11 +88,19 @@ export default function TableViewer({
     setIsAnalyzing(true);
     setAiError(null);
     try {
+      const savedEnc = localStorage.getItem('user_free_api_key');
+      const apiKey = savedEnc ? decryptKey(savedEnc) : "";
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (apiKey) {
+        headers['x-api-key'] = apiKey;
+      }
+
       const response = await fetch('/api/ai/analyze-text', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: headers,
         body: JSON.stringify({
           questionCode: questionGroup.mainCode,
           questionLabel: questionGroup.label,
