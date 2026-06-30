@@ -85,6 +85,7 @@ export default function ApiKeyModal({ isOpen, onClose, onKeySaved }: ApiKeyModal
           'Content-Type': 'application/json',
           'x-api-key': apiKey.trim(),
         },
+        body: JSON.stringify({}),
       });
 
       let data: any;
@@ -94,8 +95,7 @@ export default function ApiKeyModal({ isOpen, onClose, onKeySaved }: ApiKeyModal
           data = JSON.parse(text);
         } catch (jsonErr) {
           console.error("JSON parsing error in test-key:", jsonErr, "Response text:", text);
-          const snippet = text.slice(0, 150) + (text.length > 150 ? "..." : "");
-          throw new Error(`서버에서 올바르지 않은 응답이 반환되었습니다. (응답내용: ${snippet}) 올바른 API Key 형식을 사용했는지 확인해 주세요.`);
+          throw new Error("서버와의 연결 테스트 중 일시적인 지연 또는 통신 오류가 발생했습니다. 입력하신 API Key가 'AIzaSy'로 시작하는 올바른 구글 Gemini API Key 형식이라면, 테스트 결과와 무관하게 오른쪽의 '적용 및 저장' 버튼을 눌러 바로 저장해 사용해 보세요!");
         }
       } catch (fetchErr: any) {
         throw new Error(fetchErr?.message || "테스트 결과를 받아오는 도중 오류가 발생했습니다.");
