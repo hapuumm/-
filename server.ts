@@ -43,7 +43,7 @@ async function startServer() {
 
       // Try a lightweight request to test the key
       const response = await client.models.generateContent({
-        model: "gemini-2.0-flash",
+        model: "gemini-2.5-flash",
         contents: "Hello. Respond with one word: 'OK'",
       });
 
@@ -53,7 +53,6 @@ async function startServer() {
         throw new Error("응답이 올바르지 않습니다.");
       }
     } catch (err: any) {
-      console.error("API Key Test Failure:", err);
       const errMsg = err?.message || String(err);
       
       const isQuotaExceeded = errMsg.includes("RESOURCE_EXHAUSTED") || 
@@ -63,6 +62,7 @@ async function startServer() {
                               err?.code === 429;
                               
       if (isQuotaExceeded) {
+        console.log("API Key Test Quota Exceeded (Key valid but rate limited)");
         return res.json({
           success: true,
           isQuotaExceeded: true,
@@ -70,6 +70,7 @@ async function startServer() {
         });
       }
 
+      console.warn("API Key Test Warning:", errMsg);
       return res.status(200).json({
         success: false,
         error: "API Key 인증 실패 또는 호출 오류",
@@ -186,7 +187,7 @@ ${sampledAnswers.map((ans, idx) => `${idx + 1}. ${ans}`).join("\n")}
       };
 
       // Robust retry with model fallback
-      const modelsToTry = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-3.5-flash"];
+      const modelsToTry = ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"];
       const maxRetriesPerModel = 2;
       let response: any = null;
       let lastError: any = null;
@@ -247,7 +248,6 @@ ${sampledAnswers.map((ans, idx) => `${idx + 1}. ${ans}`).join("\n")}
       const result = JSON.parse(responseText.trim());
       res.json(result);
     } catch (err: any) {
-      console.error("AI Analysis Error:", err);
       const errMsg = err?.message || String(err);
       
       const isQuotaExceeded = errMsg.includes("RESOURCE_EXHAUSTED") || 
@@ -258,7 +258,10 @@ ${sampledAnswers.map((ans, idx) => `${idx + 1}. ${ans}`).join("\n")}
                               
       let errorResponseMsg = "AI가 주관식 답변을 분석하는 도중 오류가 발생했습니다.";
       if (isQuotaExceeded) {
+        console.log("AI Analysis Quota Exceeded (Rate limited)");
         errorResponseMsg = "입력하신 무료 API Key의 호출 한도(Quota)가 초과되었습니다. 무료 티어의 분당 요청/토큰 제한 또는 일일 사용량 한도에 도달한 상태입니다. 약 1분 정도 후에 다시 요청하시면 정상 분석이 가능합니다.";
+      } else {
+        console.warn("AI Analysis Warning:", errMsg);
       }
       
       res.status(200).json({
