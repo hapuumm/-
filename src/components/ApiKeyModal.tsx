@@ -42,15 +42,26 @@ export default function ApiKeyModal({ isOpen, onClose, onKeySaved }: ApiKeyModal
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'failed'>('idle');
   const [testMessage, setTestMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [hasServerKey, setHasServerKey] = useState<boolean | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load key from localStorage on mount
+  // Load key from localStorage on mount and check server-side key
   useEffect(() => {
     const savedEnc = localStorage.getItem('user_free_api_key');
     if (savedEnc) {
       const dec = decryptKey(savedEnc);
       setApiKey(dec);
     }
+
+    // Check if server-side key is already configured
+    fetch('/api/ai/has-server-key')
+      .then(res => res.json())
+      .then(data => {
+        if (data && typeof data.hasKey === 'boolean') {
+          setHasServerKey(data.hasKey);
+        }
+      })
+      .catch(err => console.error("Error checking server key:", err));
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -202,6 +213,18 @@ export default function ApiKeyModal({ isOpen, onClose, onKeySaved }: ApiKeyModal
                 본 앱은 서버 소유의 내장 API Key가 아닌 <strong>사용자 본인의 개인 무료 AI API Key (Gemini)</strong>를 사용하여 작동합니다. 키는 로컬 브라우저에 안전히 보관되며, 로컬 드라이브에 암호화된 파일(.enc)로 영구 저장할 수도 있습니다.
               </p>
             </div>
+
+            {hasServerKey && (
+              <div className="bg-emerald-50 border border-emerald-150 rounded-xl p-3.5 flex items-start gap-2.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                <div className="text-[11px] text-emerald-800 leading-relaxed">
+                  <p className="font-bold">✨ 서버 기본 API Key 연결됨</p>
+                  <p className="font-medium mt-0.5 text-emerald-700">
+                    전달해주신 API Key가 서버 설정에 완벽히 적용되었습니다! 별도로 개인 Key를 추가 입력하지 않아도 바로 주관식 AI 분석 기능을 제한 없이 무료로 사용하실 수 있습니다.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Input field */}
             <div className="space-y-1.5">

@@ -33,6 +33,11 @@ async function startServer() {
     });
   };
 
+  // Check if server-side key is configured
+  app.get("/api/ai/has-server-key", (req, res) => {
+    return res.json({ hasKey: !!process.env.GEMINI_API_KEY });
+  });
+
   // API Key Connection Test Endpoint
   app.post("/api/ai/test-key", async (req, res) => {
     try {
