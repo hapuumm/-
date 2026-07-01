@@ -55,13 +55,21 @@ export default function ApiKeyModal({ isOpen, onClose, onKeySaved }: ApiKeyModal
 
     // Check if server-side key is already configured
     fetch('/api/ai/has-server-key')
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error("Server key endpoint returned non-OK status");
+        return res.json();
+      })
       .then(data => {
         if (data && typeof data.hasKey === 'boolean') {
           setHasServerKey(data.hasKey);
+        } else {
+          setHasServerKey(false);
         }
       })
-      .catch(err => console.error("Error checking server key:", err));
+      .catch(err => {
+        console.warn("Error checking server key, defaulting to false:", err);
+        setHasServerKey(false);
+      });
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -90,34 +98,66 @@ export default function ApiKeyModal({ isOpen, onClose, onKeySaved }: ApiKeyModal
     setTestMessage("연결 테스트를 진행 중입니다...");
     
     try {
-      const response = await fetch('/api/ai/test-key', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey.trim(),
-        },
-      });
+      // Test the API key directly via browser fetch to the Google Gemini API (CORS is supported)
+      // This completely bypasses the local /api/ai/test-key endpoint, which might fail or be 404 in certain deployment environments.
+      const modelsToTry = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-3.5-flash"];
+      let success = false;
+      let lastError: any = null;
 
-      const text = await response.text();
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch (e) {
-        throw new Error(`서버 응답 오류 (HTML): ${text.slice(0, 150)}`);
+      for (const model of modelsToTry) {
+        try {
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey.trim()}`;
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              contents: [{
+                parts: [{
+                  text: "Hello. Respond with one word: 'OK'"
+                }]
+              }]
+            })
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+              success = true;
+              break;
+            }
+          } else {
+            const errText = await response.text();
+            lastError = new Error(errText || `HTTP ${response.status}`);
+          }
+        } catch (err: any) {
+          lastError = err;
+        }
       }
 
-      if (response.ok && data.success) {
+      if (success) {
         setTestStatus('success');
         setTestMessage("연결에 성공했습니다! 입력한 API Key가 정상 작동합니다. 🎉");
         // Auto save on successful test
         handleSaveToLocalStorage(apiKey);
       } else {
         setTestStatus('failed');
-        setTestMessage(data.error || "연결 실패: API Key가 유효하지 않거나 만료되었습니다.");
+        let errorMsg = "연결 실패: API Key가 유효하지 않거나 만료되었습니다.";
+        if (lastError) {
+          try {
+            const parsed = JSON.parse(lastError.message);
+            errorMsg = parsed?.error?.message || errorMsg;
+          } catch {
+            errorMsg = lastError.message || errorMsg;
+          }
+        }
+        setTestStatus('failed');
+        setTestMessage(errorMsg);
       }
     } catch (err: any) {
       setTestStatus('failed');
-      setTestMessage(err?.message || "연결 테스트 중 서버와의 통신 오류가 발생했습니다.");
+      setTestMessage(err?.message || "연결 테스트 중 오류가 발생했습니다.");
     }
   };
 

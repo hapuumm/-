@@ -91,33 +91,195 @@ export default function TableViewer({
       const savedEnc = localStorage.getItem('user_free_api_key');
       const apiKey = savedEnc ? decryptKey(savedEnc) : "";
 
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
+      let data: any = null;
+
       if (apiKey) {
-        headers['x-api-key'] = apiKey;
-      }
+        // If user entered a personal API key, call the Gemini API directly to avoid server /api/ routing issues in production
+        const sampledAnswers = answersList.slice(0, 400);
 
-      const response = await fetch('/api/ai/analyze-text', {
-        method: 'POST',
-        headers: headers,
-        body: JSON.stringify({
-          questionCode: questionGroup.mainCode,
-          questionLabel: questionGroup.label,
-          answers: answersList,
-        }),
-      });
+        const prompt = `
+당신은 설문조사 주관식(서술형) 답변을 의미 기반으로 분류하고 전문 통계 분석을 수행하는 수석 연구원입니다.
+문항 코드 [${questionGroup.mainCode}]에 대한 주관식 답변 목록을 분석해 주세요.
 
-      const text = await response.text();
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch (e) {
-        throw new Error(`서버 응답 오류 (HTML): ${text.slice(0, 150)}`);
-      }
+[문항 내용]: ${questionGroup.label}
+[응답자 답변 목록 (총 ${sampledAnswers.length}개)]:
+${sampledAnswers.map((ans, idx) => `${idx + 1}. ${ans}`).join("\n")}
 
-      if (!response.ok) {
-        throw new Error(data.error || 'AI 분석 중 오류가 발생했습니다.');
+[요구사항]:
+1. 전체 답변을 분석하여 문항의 핵심 트렌드와 특징을 아우르는 "전체 요약(overallSummary)"을 한 두 문장으로 작성해 주세요.
+2. 분석 대상에서 대표되는 "주요 핵심 키워드(mainKeywords)"를 5~8개 추출해 주세요.
+3. 의미가 유사한 답변들을 그룹화하여 4~7개의 명확하고 상호 배타적인 카테고리(categories)로 분류해 주세요.
+4. 각 카테고리별로 아래 항목을 정확히 작성해 주세요:
+   - 카테고리 이름 (짧고 명확한 한글 명칭, 예: "배송 지연 및 속도 불만", "가격 대비 높은 가성비" 등)
+   - 해당 카테고리로 매칭된 답변 수(count) 및 전체 유효 답변 수 대비 비율(percentage, 소수점 첫째 자리까지)
+   - 해당 카테고리를 대표하는 구체적이고 실제적인 핵심 단어들(keywords, 3~5개)
+   - 해당 카테고리에 의견 요약 설명(description, 한 줄 수준)
+   - 해당 카테고리를 직관적으로 보여주는 실제 답변 원문(representativeQuotes, 2~3개)
+5. 보고서나 발표 프레젠테이션에 즉시 인용하거나 활용하기에 완벽한 비즈니스 톤앤매너의 "보고서용 인사이트 문장(reportInsights)"을 3~4개 개별 문장으로 도출해 주세요.
+`;
+
+        const systemInstruction = "당신은 한국어 설문조사 주관식 응답 데이터 처리에 특화된 뛰어난 데이터 분석가입니다. 주어지는 주관식 답변 텍스트들을 의미 기반으로 완벽히 분류하고 통계 요약을 도출해 내야 합니다. 반드시 정해진 JSON 스키마 규격을 충족하여 답변해 주세요.";
+
+        const schema = {
+          type: "object",
+          properties: {
+            overallSummary: {
+              type: "string",
+              description: "전체 주관식 응답 트렌드를 한 두 줄로 아우르는 간결하고 명확한 요약문",
+            },
+            mainKeywords: {
+              type: "array",
+              description: "전체 응답을 관통하는 주요 핵심 키워드 5~8개 목록",
+              items: {
+                type: "string",
+              },
+            },
+            reportInsights: {
+              type: "array",
+              description: "보고서에 바로 복사/인용하여 즉시 쓸 수 있는 고품질 비즈니스 인사이트 문장 3~4개 목록",
+              items: {
+                type: "string",
+              },
+            },
+            categories: {
+              type: "array",
+              description: "의미 분류별 카테고리 목록 (4~7개)",
+              items: {
+                type: "object",
+                properties: {
+                  category: {
+                    type: "string",
+                    description: "핵심 요지를 담은 짧은 한국어 카테고리 이름 (예: 품질 만족, 가격 부담 등)",
+                  },
+                  count: {
+                    type: "integer",
+                    description: "이 카테고리로 분류된 응답 수",
+                  },
+                  percentage: {
+                    type: "number",
+                    description: "이 카테고리가 차지하는 비율 (%)",
+                  },
+                  keywords: {
+                    type: "array",
+                    description: "이 카테고리의 특징을 대변하는 주요 세부 키워드 3~5개",
+                    items: {
+                      type: "string",
+                    },
+                  },
+                  description: {
+                    type: "string",
+                    description: "이 카테고리 응답자들의 주요 의견이나 정서에 대한 한 줄 요약 설명",
+                  },
+                  representativeQuotes: {
+                    type: "array",
+                    description: "이 카테고리를 잘 나타내 주는 실제 응답자의 답변 텍스트 예시 2~3개",
+                    items: {
+                      type: "string",
+                    },
+                  },
+                },
+                required: ["category", "count", "percentage", "keywords", "description", "representativeQuotes"],
+              },
+            },
+          },
+          required: ["overallSummary", "mainKeywords", "reportInsights", "categories"],
+        };
+
+        const payload = {
+          contents: [{ parts: [{ text: prompt }] }],
+          systemInstruction: { parts: [{ text: systemInstruction }] },
+          generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: schema,
+          }
+        };
+
+        const modelsToTry = [
+          "gemini-2.5-flash", 
+          "gemini-2.0-flash", 
+          "gemini-1.5-flash", 
+          "gemini-3.5-flash", 
+          "gemini-3.1-pro-preview"
+        ];
+        const maxRetriesPerModel = 2;
+        let success = false;
+        let lastError: any = null;
+
+        for (const model of modelsToTry) {
+          for (let attempt = 1; attempt <= maxRetriesPerModel; attempt++) {
+            try {
+              console.log(`[Frontend Direct AI Analysis] Attempting model: ${model}, attempt ${attempt}/${maxRetriesPerModel}`);
+              const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+              const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload),
+              });
+
+              if (response.ok) {
+                const resData = await response.json();
+                const textOutput = resData?.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (textOutput) {
+                  data = JSON.parse(textOutput.trim());
+                  success = true;
+                  break;
+                }
+              } else {
+                const errText = await response.text();
+                lastError = new Error(errText || `HTTP ${response.status}`);
+              }
+            } catch (err: any) {
+              lastError = err;
+              console.warn(`[Frontend Direct AI Analysis] Failed with model ${model} (attempt ${attempt}):`, err?.message || err);
+            }
+            
+            if (attempt < maxRetriesPerModel && !success) {
+              const delayMs = attempt * 3000;
+              await new Promise((resolve) => setTimeout(resolve, delayMs));
+            }
+          }
+          if (success) break;
+        }
+
+        if (!success || !data) {
+          let errorMsg = "모든 AI 모델 분석 시도가 실패했습니다. 잠시 후 다시 시도해 주세요.";
+          if (lastError) {
+            try {
+              const parsed = JSON.parse(lastError.message);
+              errorMsg = parsed?.error?.message || errorMsg;
+            } catch {
+              errorMsg = lastError.message || errorMsg;
+            }
+          }
+          throw new Error(errorMsg);
+        }
+
+      } else {
+        // Fallback to server side key (when no personal key is stored)
+        const response = await fetch('/api/ai/analyze-text', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            questionCode: questionGroup.mainCode,
+            questionLabel: questionGroup.label,
+            answers: answersList,
+          }),
+        });
+
+        const text = await response.text();
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          throw new Error(`서버 응답 오류 (HTML): ${text.slice(0, 150)}`);
+        }
+
+        if (!response.ok) {
+          throw new Error(data.error || 'AI 분석 중 오류가 발생했습니다.');
+        }
       }
 
       setAnalysisResult(data);
